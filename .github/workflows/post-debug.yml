@@ -1,0 +1,71 @@
+name: Verify post delivery in dev chat
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_TERM_PROGRESS_WHEN: never
+    steps:
+      - name: Download committed publication state
+        uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7 # v24
+        with:
+          workflow: post.yml
+          name: posted_jobs
+          path: data
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow_conclusion: success
+          if_no_artifact_found: fail
+
+      - name: Require committed publication state
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -s data/posted_jobs.json ]; then
+            echo "::error::Committed posted_jobs.json is missing; refusing to publish."
+            exit 1
+          fi
+          jq -e '.version == 2 and (.last_successful_run_at | type == "string") and (.jobs | type == "object")' data/posted_jobs.json > /dev/null
+          echo "Loaded $(jq '.jobs | length' data/posted_jobs.json) previously published vacancy IDs."
+
+      - name: Download release binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o rust-hh-feed \
+            "https://github.com/${{ github.repository }}/releases/latest/download/rust-hh-feed"
+          chmod +x rust-hh-feed
+
+      - name: Run bot against dev chat without advancing production state
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.DEV_TELEGRAM_CHAT_ID }}
+          PROD_TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MANUAL_MODE: 'true'
+          HH_USER_AGENT: ${{ vars.HH_USER_AGENT }}
+          HH_PROXY_URLS: ${{ vars.HH_PROXY_URLS }}
+          HH_PROXY_SOURCE_URLS: ${{ vars.HH_PROXY_SOURCE_URLS }}
+          HH_PROXY_PROBE_TIMEOUT_SECS: ${{ vars.HH_PROXY_PROBE_TIMEOUT_SECS }}
+          RUST_LOG: info
+        run: |
+          set -euo pipefail
+          test -n "$TELEGRAM_CHAT_ID"
+          normalize_chat_id() {
+            case "$1" in
+              -100*) printf '%s' "$1" ;;
+              *) printf '%s' "-100$1" ;;
+            esac
+          }
+          if [ "$(normalize_chat_id "$TELEGRAM_CHAT_ID")" = "$(normalize_chat_id "$PROD_TELEGRAM_CHAT_ID")" ]; then
+            echo "::error::Dev and production Telegram chat IDs are identical; refusing to publish."
+            exit 1
+          fi
+          ./rust-hh-feed

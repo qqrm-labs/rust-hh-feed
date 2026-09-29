@@ -39,6 +39,16 @@ jobs:
           workflow_conclusion: success
           if_no_artifact_found: fail
 
+      - name: Require committed publication state
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -s data/posted_jobs.json ]; then
+            echo "::error::Committed posted_jobs.json is missing; refusing to publish."
+            exit 1
+          fi
+          jq -e '.version == 2 and (.last_successful_run_at | type == "string") and (.jobs | type == "object")' data/posted_jobs.json > /dev/null
+
       - name: Download release binary
         shell: bash
         env:
