@@ -14,8 +14,12 @@ jobs:
     env:
       CARGO_TERM_PROGRESS_WHEN: never
     steps:
+      - name: Checkout verification tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Download committed publication state
-        uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7 # v24
+        uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
         with:
           workflow: post.yml
           name: posted_jobs
@@ -41,6 +45,9 @@ jobs:
           set -euo pipefail
           curl -fsSL -o rust-hh-feed \
             "https://github.com/${{ github.repository }}/releases/latest/download/rust-hh-feed"
+          curl --fail --silent --show-error -L -o delivery-manifest.json \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/delivery-manifest.json"
+          python3 .github/scripts/release_manifest.py verify rust-hh-feed delivery-manifest.json
           chmod +x rust-hh-feed
 
       - name: Run bot against dev chat without advancing production state

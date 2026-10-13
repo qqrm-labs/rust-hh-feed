@@ -111,3 +111,7 @@ To reconcile:
 Cargo and Actions updates share a weekly Dependabot maintenance batch with a seven-day cooldown; security fixes use a dedicated group. Rust toolchain updates remain tracked separately. Native auto-merge requires the exact PR head to pass `ci-gate` and `workflow-security-gate`, with no review requirement. Failed or skipped required jobs cannot pass a gate. The privileged controller reads metadata only; it never checks out PR code or consumes PR artifacts.
 
 Existing release and delivery triggers are preserved. A merge performed using `GITHUB_TOKEN` does not guarantee a follow-up push workflow. Guaranteed automatic post-merge releases need a separate GitHub App token or verified release controller; this change does not claim that coverage.
+
+The release publishes `delivery-manifest.json` (protocol 1, source commit, SHA-256) alongside the binary. Posting verifies both protocol and hash before execution. Missing old manifests and asset-update races fail closed; wait for the normal release to finish before retrying.
+
+Manual production delivery uses the same reusable posting workflow, backfill input, journal and pending guard as scheduled delivery. It cannot bypass reconciliation.
