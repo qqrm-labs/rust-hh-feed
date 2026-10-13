@@ -10,6 +10,7 @@ on:
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
       - '.github/actions/setup-rust/action.yml'
+      - '.github/scripts/release_manifest.py'
   workflow_dispatch:
 
 permissions:
@@ -63,4 +64,6 @@ jobs:
             gh release create latest --title latest --notes "Automated latest build"
           fi
 
+          python3 .github/scripts/release_manifest.py create target/release/rust-hh-feed delivery-manifest.json
           gh release upload latest target/release/rust-hh-feed --clobber
+          gh release upload latest delivery-manifest.json --clobber
