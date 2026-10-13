@@ -13,47 +13,13 @@ permissions:
 
 jobs:
   run-bot:
-    if: ${{ vars.HH_PIPELINES_ENABLED == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      CARGO_TERM_PROGRESS_WHEN: never
-
-    concurrency:
-      group: manual-release-${{ github.ref }}
-      cancel-in-progress: true
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Setup Rust
-        uses: ./.github/actions/setup-rust
-
-      - name: Download release binary
-        shell: bash
-        env:
-          BINARY_NAME: rust-hh-feed
-        run: |
-          set -euo pipefail
-          curl -sSL -o "$BINARY_NAME" \
-            "https://github.com/${{ github.repository }}/releases/latest/download/$BINARY_NAME"
-          chmod +x "$BINARY_NAME"
-
-      - name: Run bot
-        shell: bash
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          BACKFILL_HOURS: ${{ inputs.backfill_hours }}
-          HH_USER_AGENT: ${{ vars.HH_USER_AGENT }}
-          HH_PROXY_URLS: ${{ vars.HH_PROXY_URLS }}
-          HH_PROXY_SOURCE_URLS: ${{ vars.HH_PROXY_SOURCE_URLS }}
-          HH_PROXY_PROBE_TIMEOUT_SECS: ${{ vars.HH_PROXY_PROBE_TIMEOUT_SECS }}
-          RUST_LOG: info
-          BINARY_NAME: rust-hh-feed
-        run: |
-          set -euo pipefail
-          "./$BINARY_NAME"
+    uses: ./.github/workflows/post.yml
+    permissions:
+      contents: write
+      actions: write
+    with:
+      backfill_hours: ${{ inputs.backfill_hours }}
+    secrets:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      DEV_TELEGRAM_CHAT_ID: ${{ secrets.DEV_TELEGRAM_CHAT_ID }}

@@ -10,6 +10,21 @@ import urllib.request
 from pathlib import Path
 
 BRANCH = 'delivery-state'
+BOOTSTRAP = 'confirmed-absent'
+
+
+def expected_path(local_file):
+    return Path(str(local_file) + '.remote-sha')
+
+
+def remember(local_file, sha):
+    if not isinstance(sha, str) or not sha:
+        raise RuntimeError('Checkpoint response did not identify the committed blob')
+    path = expected_path(local_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = Path(str(path) + '.tmp')
+    temporary.write_text(sha)
+    temporary.replace(path)
 
 
 def api(endpoint, method='GET', payload=None):
@@ -55,19 +70,26 @@ def main():
                 raise RuntimeError('Existing delivery-state branch has no checkpoint')
             if api('') is None:
                 raise RuntimeError('Repository unavailable; cannot establish first state')
+            remember(local_file, BOOTSTRAP)
             sys.exit(3)
         content = base64.b64decode(envelope['state'], validate=True)
         path = Path(local_file)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
+        remember(local_file, remote['sha'])
         return
     if operation not in ('save', 'begin', 'confirm'):
         raise RuntimeError('Unknown checkpoint operation')
+    expected = expected_path(local_file).read_text()
+    if (remote is None and expected != BOOTSTRAP) or (remote is not None and remote['sha'] != expected):
+        raise RuntimeError('Delivery checkpoint changed since restore; refusing stale state')
     if operation in ('begin', 'confirm') and envelope is None:
         raise RuntimeError('Delivery must establish initial state before sending')
     if operation == 'confirm' and not envelope['pending']:
         raise RuntimeError('No pending delivery to confirm')
-    if remote is None and api('/git/ref/heads/' + BRANCH) is None:
+    if remote is None:
+        if api('/git/ref/heads/' + BRANCH) is not None:
+            raise RuntimeError('Existing delivery-state branch has no checkpoint')
         repository = api('')
         head = api('/git/ref/heads/' + repository['default_branch'])
         api('/git/refs', 'POST', {'ref': 'refs/heads/' + BRANCH, 'sha': head['object']['sha']})
@@ -79,7 +101,8 @@ def main():
                'content': base64.b64encode(json.dumps(next_state, sort_keys=True).encode()).decode()}
     if remote is not None:
         payload['sha'] = remote['sha']
-    api(endpoint, 'PUT', payload)
+    response = api(endpoint, 'PUT', payload)
+    remember(local_file, response.get('content', {}).get('sha'))
 
 
 if __name__ == '__main__':

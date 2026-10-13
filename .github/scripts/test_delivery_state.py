@@ -26,6 +26,7 @@ class CheckpointTests(unittest.TestCase):
         self.env = patch.dict(os.environ, {'DELIVERY_STATE_KEY': 'checkpoint.json', 'GITHUB_REPOSITORY': 'test/repo', 'GH_TOKEN': 'TEST'})
         self.env.start()
         self.addCleanup(self.env.stop)
+        state.remember(self.path, 'blob-sha')
 
     def run_operation(self, operation, *args):
         with patch.object(sys, 'argv', ['delivery_state.py', operation, str(self.path), *args]):
@@ -52,13 +53,14 @@ class CheckpointTests(unittest.TestCase):
 
     def test_pending_is_durable_before_send_and_blocks_crash_retry(self):
         self.path.write_bytes(b'confirmed')
-        with patch.object(state, 'api', side_effect=[remote(), {}]) as api:
+        with patch.object(state, 'api', side_effect=[remote(), {'content': {'sha': 'pending-sha'}}]) as api:
             self.run_operation('begin', 'item-2')
             payload = api.call_args.args[2]
             pending = state.decode({'content': payload['content']})
             self.assertEqual(payload['sha'], 'blob-sha')
             self.assertEqual(len(pending['pending']), 64)
             self.assertEqual(base64.b64decode(pending['state']), b'confirmed')
+            self.assertEqual(state.expected_path(self.path).read_text(), 'pending-sha')
         for operation in ('restore', 'save', 'begin'):
             with patch.object(state, 'api', return_value=remote(pending=pending['pending'])) as api:
                 with self.assertRaises(RuntimeError): self.run_operation(operation, 'item-2')
@@ -66,13 +68,14 @@ class CheckpointTests(unittest.TestCase):
 
     def test_ack_promotes_state_and_clears_pending_in_one_write(self):
         self.path.write_bytes(b'next confirmed')
-        with patch.object(state, 'api', side_effect=[remote(pending='pending-hash'), {}]) as api:
+        with patch.object(state, 'api', side_effect=[remote(pending='pending-hash'), {'content': {'sha': 'confirmed-sha'}}]) as api:
             self.run_operation('confirm')
             payload = api.call_args.args[2]
             updated = state.decode({'content': payload['content']})
             self.assertEqual(payload['sha'], 'blob-sha')
             self.assertIsNone(updated['pending'])
             self.assertEqual(base64.b64decode(updated['state']), b'next confirmed')
+            self.assertEqual(state.expected_path(self.path).read_text(), 'confirmed-sha')
 
     def test_failed_checkpoint_after_ack_leaves_pending_and_blocks_next_run(self):
         self.path.write_bytes(b'next confirmed')
@@ -96,5 +99,33 @@ class CheckpointTests(unittest.TestCase):
             with patch.object(state, 'api', return_value={'content': content}):
                 with self.assertRaises((ValueError, RuntimeError)): self.run_operation('restore')
         self.assertFalse(self.path.exists())
+
+    def test_changed_remote_after_restore_never_overwrites_newer_state(self):
+        with patch.object(state, 'api', return_value=remote()): self.run_operation('restore')
+        self.assertEqual(state.expected_path(self.path).read_text(), 'blob-sha')
+        for operation in ('save', 'begin', 'confirm'):
+            latest = remote(b'newer confirmed state', pending='another-pending' if operation == 'confirm' else None)
+            latest['sha'] = 'newer-sha'
+            with self.subTest(operation=operation), patch.object(state, 'api', return_value=latest) as api:
+                with self.assertRaisesRegex(RuntimeError, 'changed since restore'):
+                    self.run_operation(operation, 'item')
+                self.assertEqual(api.call_count, 1)
+                self.assertEqual(api.call_args.args, ('/contents/checkpoint.json?ref=delivery-state',))
+
+    def test_missing_restore_receipt_does_not_allow_bootstrap_or_overwrite(self):
+        state.expected_path(self.path).unlink()
+        self.path.write_bytes(b'local stale state')
+        for existing in (None, remote()):
+            with patch.object(state, 'api', return_value=existing) as api:
+                with self.assertRaises(FileNotFoundError): self.run_operation('save')
+                self.assertEqual(api.call_count, 1)
+
+    def test_bootstrap_race_with_another_writer_fails_before_put(self):
+        with patch.object(state, 'api', side_effect=[None, None, {'default_branch': 'main'}]):
+            with self.assertRaises(SystemExit): self.run_operation('restore')
+        self.path.write_bytes(b'initial')
+        with patch.object(state, 'api', return_value=remote(b'another runner state')) as api:
+            with self.assertRaisesRegex(RuntimeError, 'changed since restore'): self.run_operation('save')
+            self.assertEqual(api.call_count, 1)
 
 if __name__ == '__main__': unittest.main()

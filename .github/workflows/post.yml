@@ -1,6 +1,18 @@
 name: Post to Telegram
 
 on:
+  workflow_call:
+    inputs:
+      backfill_hours:
+        required: false
+        type: string
+    secrets:
+      TELEGRAM_BOT_TOKEN:
+        required: true
+      TELEGRAM_CHAT_ID:
+        required: true
+      DEV_TELEGRAM_CHAT_ID:
+        required: true
   schedule:
     - cron: '*/20 * * * *'
   workflow_dispatch:
@@ -11,7 +23,7 @@ on:
         type: string
 
 concurrency:
-  group: post-to-telegram-${{ github.ref }}
+  group: production-delivery
   cancel-in-progress: false
 
 jobs:
@@ -47,7 +59,7 @@ jobs:
 
       - name: Download posted jobs state
         if: steps.durable.outputs.bootstrap == 'true'
-        uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7 # v24
+        uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
         with:
           workflow: post.yml
           name: posted_jobs
@@ -72,9 +84,12 @@ jobs:
           BINARY_NAME: rust-hh-feed
         run: |
           set -euo pipefail
-          curl -sSL -o "$BINARY_NAME" \
+          curl --fail --silent --show-error -L -o "$BINARY_NAME" \
             "https://github.com/${{ github.repository }}/releases/latest/download/$BINARY_NAME"
-          chmod +x "$BINARY_NAME"
+          curl --fail --silent --show-error -L -o delivery-manifest.json \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/delivery-manifest.json"
+          python3 .github/scripts/release_manifest.py verify rust-hh-feed delivery-manifest.json
+          chmod +x rust-hh-feed
 
       - name: Run bot
         shell: bash
@@ -96,7 +111,7 @@ jobs:
           "./$BINARY_NAME"
 
       - name: Upload posted jobs state
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: posted_jobs
           path: data/posted_jobs.json
