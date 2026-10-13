@@ -39,7 +39,7 @@ The bot expects a few environment variables:
 | `MANUAL_MODE` | Set to `true` to skip saving posted jobs |
 | `JOB_RETENTION_DAYS` | Maximum age in days to keep posted job IDs |
 
-The file referenced by `POSTED_JOBS_PATH` is not committed to the repository. It is downloaded from the previous successful workflow run and uploaded back as an artifact only after a new successful execution. The state file also stores the timestamp of the last committed run so the bot can re-fetch vacancies after one or more failed runs.
+The file referenced by `POSTED_JOBS_PATH` is checkpointed after every acknowledged message in the separate `delivery-state` branch. The fetch watermark advances only after the full batch succeeds, so failed batches retain both confirmed vacancies and their original retry window. The previous artifact is used only for first migration.
 The collector now uses the HeadHunter search RSS feed exposed by the public vacancy search page instead of the blocked `/vacancies` API endpoint. `HH_USER_AGENT` remains configurable so production runs can identify themselves consistently.
 The bot can dynamically poll several built-in public proxy providers for Russian free proxies when `HH_PROXY_SOURCE_URLS` is unset. If you do define `HH_PROXY_SOURCE_URLS`, those custom sources replace the built-in provider list.
 If `HH_PROXY_URLS` is configured or a proxy source returns candidates, the bot probes a bounded candidate set against the HeadHunter search RSS endpoint, keeps the working proxies in order, and retries the real feed request through them until one succeeds before falling back to direct access. Telegram traffic always stays on the direct network path.
@@ -70,30 +70,9 @@ This keeps the logs short while still printing warnings and errors.
 ## Continuous Integration
 Pull requests trigger the [`ci.yml`](.github/workflows/ci.yml) workflow that checks formatting,
 lint rules, `cargo machete`, and tests. The `post.yml` workflow
-can run the application manually when the HeadHunter workflows are enabled. After
-`ci.yml` succeeds, the `auto_merge.yml` workflow merges the pull request using the `gh` CLI.
-Dependabot now manages three update surfaces:
+can run the application manually when the HeadHunter workflows are enabled. CI and workflow-security gates validate every PR. Dependabot can enable native auto-merge for its verified current commit when both gates pass. Cargo and Actions updates are batched weekly; toolchain updates are tracked separately.
 
-- Cargo crates from `Cargo.toml` and `Cargo.lock`
-- GitHub Actions used in `.github/workflows/`
-- Rust toolchain versions from `rust-toolchain.toml`
-
-Internal pull requests are merged by `auto_merge.yml` only after their own
-`CI Checks` workflow completes successfully. The allowlist is limited to
-same-repository PRs from `dependabot[bot]`, `qqrm`, and `codex-bot`, so
-external contributor branches are not auto-merged. GitHub Actions updates are
-grouped into a single weekly pull request to reduce merge churn, and
-third-party actions in the workflows are pinned to immutable commit SHAs. A
-push to `main` then triggers `release.yml`, which rebuilds the production
-binary and updates the [`latest`](../../releases/latest) release through the
-GitHub CLI when the bot sources or build inputs change on `main`. The scheduled
-posting pipeline downloads that release asset instead of rebuilding the bot on
-every run.
-
-The CI job caches Cargo dependencies and build artifacts to speed up subsequent
-runs. For each update to the `main` branch the same workflow uploads the latest
-compiled binary to the [`latest`](../../releases/latest) release. You can also
-download artifacts directly from the workflow run page.
+A push to main rebuilds the latest release binary. The scheduled posting pipeline downloads the release asset. See the dependency policy below for the limitation of merges performed with GITHUB_TOKEN.
 
 Additional workflows automate repository maintenance:
 
@@ -111,3 +90,24 @@ curl -L https://github.com/<owner>/<repo>/releases/latest/download/rust-hh-feed 
 
 ## License
 This project is licensed under the [MIT](LICENSE) license.
+
+## Delivery checkpoints and recovery
+
+Production delivery stores its checkpoint in the separate `delivery-state` branch using GitHub's contents API. The workflow token is scoped to the restore/send steps and consumed by the checkpoint helper; checkout does not persist credentials. The remote file is a versioned JSON envelope containing base64-encoded application state and a `pending` SHA-256 digest. No token, chat ID, or API response is stored.
+
+Before each send, a pending operation is committed. Only an acknowledged send promotes the application state and clears pending in the same API write. Authentication, network, corrupt-state and checkpoint conflicts stop delivery. A missing branch is the only first-run condition; existing legacy state is migrated where available. A missing file in an existing state branch is an error. Caches and run artifacts are no longer the authority after migration.
+
+A timeout, process crash, or failed checkpoint after an acknowledgement leaves pending set. Subsequent scheduled runs stop before sending. This provides safe interruption, not exactly-once delivery: Telegram has no idempotency key for this operation.
+
+To reconcile:
+
+1. Pause the production workflow and inspect the failed run and Telegram channel. Do not blindly retry or remove state.
+2. Read the checkpoint file on `delivery-state` and decode its `state` field locally. If the pending message was delivered, add its confirmed entry to the application state. If it was definitely not delivered, retain the previous application state. If the outcome is still unknown, leave pending intact.
+3. Encode the reconciled state, set `pending` to null, and update that same file with its current blob SHA to reject concurrent changes. Keep tokens, chat IDs and response bodies out of the commit. Record the evidence in the recovery change.
+4. For local runs, update the local state consistently and remove only its `.pending` sidecar after reconciliation. Resume the workflow. Already confirmed entries are skipped.
+
+## Dependency and workflow policy
+
+Cargo and Actions updates share a weekly Dependabot maintenance batch with a seven-day cooldown; security fixes use a dedicated group. Rust toolchain updates remain tracked separately. Native auto-merge requires the exact PR head to pass `ci-gate` and `workflow-security-gate`, with no review requirement. Failed or skipped required jobs cannot pass a gate. The privileged controller reads metadata only; it never checks out PR code or consumes PR artifacts.
+
+Existing release and delivery triggers are preserved. A merge performed using `GITHUB_TOKEN` does not guarantee a follow-up push workflow. Guaranteed automatic post-merge releases need a separate GitHub App token or verified release controller; this change does not claim that coverage.

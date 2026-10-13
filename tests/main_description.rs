@@ -15,6 +15,7 @@ fn main_ignores_jobs_with_rust_only_in_description() {
         .mock("GET", "/search/vacancy/rss")
         .match_query(mockito::Matcher::Any)
         .with_status(200)
+        .with_body(r#"{"ok":true}"#)
         .with_header("content-type", "application/xml")
         .with_body(hh_body)
         .create();
@@ -23,6 +24,7 @@ fn main_ignores_jobs_with_rust_only_in_description() {
         .mock("POST", "/bottoken/sendMessage")
         .expect(0)
         .with_status(200)
+        .with_body(r#"{"ok":true}"#)
         .create();
 
     let dir = tempdir().unwrap();

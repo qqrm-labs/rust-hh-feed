@@ -26,6 +26,13 @@ async fn main() -> anyhow::Result<()> {
 
     let path = std::env::var("POSTED_JOBS_PATH").unwrap_or_else(|_| "data/posted_jobs.json".into());
     let mut state = load_posted_jobs(Path::new(&path))?;
+    let manual_mode = std::env::var(MANUAL_MODE_VAR)
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if !manual_mode {
+        // Establish a durable checkpoint before the first side effect.
+        save_posted_jobs(Path::new(&path), &state)?;
+    }
     let retention_days = std::env::var(JOB_RETENTION_VAR)
         .ok()
         .and_then(|v| v.parse::<i64>().ok())
@@ -103,21 +110,21 @@ async fn main() -> anyhow::Result<()> {
         log::info!("No new jobs to post");
     } else {
         for job in &new_jobs {
+            if !manual_mode {
+                rust_hh_feed::checkpoint::begin(Path::new(&path), &job.id)?;
+            }
             bot.send_message(&job.url).await?;
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-        }
-
-        for job in &new_jobs {
             state
                 .jobs
                 .entry(job.id.clone())
                 .or_insert_with(|| Utc::now().date_naive().to_string());
+            if !manual_mode {
+                // Keep the fetch watermark unchanged until the whole batch succeeds.
+                state::confirm_posted_jobs(Path::new(&path), &state)?;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }
     }
-
-    let manual_mode = std::env::var(MANUAL_MODE_VAR)
-        .map(|v| v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
 
     if !manual_mode {
         state.last_successful_run_at = Some(now);

@@ -1,53 +1,35 @@
 version: 2
-updates:
-  - package-ecosystem: "cargo"
-    directory: "/"
+multi-ecosystem-groups:
+  maintenance:
     schedule:
       interval: "weekly"
       day: "monday"
       time: "12:00"
       timezone: "Europe/Moscow"
-    open-pull-requests-limit: 10
-    labels:
-      - "dependencies"
-      - "rust"
-    commit-message:
-      prefix: "deps"
-      include: "scope"
-    groups:
-      rust-minor-and-patch:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-          - "patch"
 
+updates:
   - package-ecosystem: "github-actions"
     directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "12:30"
-      timezone: "Europe/Moscow"
-    open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "github-actions"
-    commit-message:
-      prefix: "ci"
-      include: "scope"
+    patterns: ["*"]
+    multi-ecosystem-group: "maintenance"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "cargo"
+    directory: "/"
+    patterns: ["*"]
+    multi-ecosystem-group: "maintenance"
+    cooldown:
+      default-days: 7
     groups:
-      github-actions:
-        patterns:
-          - "*"
+      security:
+        applies-to: "security-updates"
+        patterns: ["*"]
 
   - package-ecosystem: "rust-toolchain"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "13:00"
+      time: "12:00"
       timezone: "Europe/Moscow"
-    labels:
-      - "dependencies"
-      - "rust-toolchain"

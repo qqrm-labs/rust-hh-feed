@@ -1,4 +1,4 @@
-name: CI Checks
+name: CI
 
 on:
   # Mandatory: GitHub drops a workflow that has neither runs nor
@@ -8,7 +8,7 @@ on:
   pull_request:
   push:
     branches:
-      - dependabot/**
+      - main
 
 permissions:
   contents: read
@@ -27,13 +27,15 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
 
       - name: Cache cargo registry and target
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry
@@ -46,16 +48,18 @@ jobs:
         run: |
           set -euo pipefail
           cargo fmt --all -- --check
-          cargo clippy --quiet --all-targets --all-features -- -D warnings
+          cargo clippy --locked --quiet --all-targets --all-features -- -D warnings
           cargo machete
-          cargo test --quiet
+          cargo test --locked --quiet
 
-      - name: Run integration
-        if: env.RUN_INTEGRATION == 'true'
+
+  ci-gate:
+    if: always()
+    needs: [test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every CI job
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.DEV_TELEGRAM_CHAT_ID }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo run --release --quiet
+          RESULTS: ${{ toJSON(needs) }}
+        run: jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"
