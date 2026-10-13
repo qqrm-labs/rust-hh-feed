@@ -50,6 +50,7 @@ jobs:
           cargo fmt --all -- --check
           cargo clippy --locked --quiet --all-targets --all-features -- -D warnings
           cargo machete
+          cargo audit
           cargo test --locked --quiet
 
 
