@@ -23,7 +23,7 @@ on:
         type: string
 
 concurrency:
-  group: post-to-telegram-${{ github.ref }}
+  group: production-delivery
   cancel-in-progress: false
 
 jobs:

@@ -117,3 +117,5 @@ The release publishes `delivery-manifest.json` (protocol 1, source commit, SHA-2
 Manual production delivery uses the same reusable posting workflow, backfill input, journal and pending guard as scheduled delivery. It cannot bypass reconciliation.
 
 Migration note (2026-10-14): the retired `auto_merge.yml` trusted an author allowlist including `qqrm`, so its already-running workflow merged the initial migration PR #161 before rollout verification finished. That legacy controller is removed. The replacement enables native auto-merge only for verified Dependabot heads after both gates; ordinary author PRs are not eligible. Manual production delivery and release verification share the guarded path described above.
+
+Every mutation compares the remote blob SHA with the snapshot recorded at restore (or the prior successful write). A stale runner cannot replace newer progress, even across branches; a SHA conflict stops before another send.
