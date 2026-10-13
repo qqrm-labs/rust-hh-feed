@@ -61,7 +61,12 @@ pub fn load_posted_jobs(path: &Path) -> Result<PostedJobsState> {
 
 pub fn save_posted_jobs(path: &Path, state: &PostedJobsState) -> Result<()> {
     let data = serde_json::to_string_pretty(state)?;
-    fs::write(path, data)?;
+    crate::checkpoint::save(path, data.as_bytes())?;
+    Ok(())
+}
+
+pub fn confirm_posted_jobs(path: &Path, state: &PostedJobsState) -> Result<()> {
+    crate::checkpoint::confirm(path, &serde_json::to_vec_pretty(state)?)?;
     Ok(())
 }
 

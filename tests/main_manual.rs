@@ -14,6 +14,7 @@ fn main_manual_mocked() {
         .mock("GET", "/search/vacancy/rss")
         .match_query(mockito::Matcher::Any)
         .with_status(200)
+        .with_body(r#"{"ok":true}"#)
         .with_header("content-type", "application/xml")
         .with_body(common::rss_feed(&[(
             &pub_date,
@@ -26,6 +27,7 @@ fn main_manual_mocked() {
         .mock("POST", "/bottoken/sendMessage")
         .expect(1)
         .with_status(200)
+        .with_body(r#"{"ok":true}"#)
         .create();
 
     let dir = tempdir().unwrap();

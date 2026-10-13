@@ -11,6 +11,7 @@ async fn send_message_returns_status() {
     let mock = server
         .mock("POST", path.as_str())
         .with_status(200)
+        .with_body(r#"{"ok":true}"#)
         .with_header("content-type", "application/json")
         .create_async()
         .await;

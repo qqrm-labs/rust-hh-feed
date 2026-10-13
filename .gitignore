@@ -1,1 +1,6 @@
 /target
+
+# Local delivery recovery markers and Python test cache
+*.pending
+*.checkpoint-tmp
+__pycache__/

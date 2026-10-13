@@ -32,6 +32,7 @@ async fn fetch_jobs_parses_mock_rss_response() {
         ]))
         .match_header("user-agent", expected_user_agent)
         .with_status(200)
+        .with_body(r#"{"ok":true}"#)
         .with_header("content-type", "application/xml")
         .with_body(rss_feed(&[(
             &pub_date,
@@ -64,6 +65,7 @@ async fn fetch_jobs_between_filters_rss_items_by_requested_range() {
         .mock("GET", "/search/vacancy/rss")
         .match_query(Matcher::Any)
         .with_status(200)
+        .with_body(r#"{"ok":true}"#)
         .with_header("content-type", "application/xml")
         .with_body(rss_feed(&[
             (
@@ -117,6 +119,7 @@ async fn fetch_jobs_fails_on_invalid_success_payload() {
         .mock("GET", "/search/vacancy/rss")
         .match_query(Matcher::Any)
         .with_status(200)
+        .with_body(r#"{"ok":true}"#)
         .with_header("content-type", "application/xml")
         .with_body("<rss><channel><item></rss>")
         .create_async()

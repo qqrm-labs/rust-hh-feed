@@ -28,13 +28,15 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
 
       - name: Cache cargo
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry
@@ -48,7 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cargo build --release --quiet
+          cargo build --release --locked --quiet
 
       - name: Publish binary to latest release
         shell: bash

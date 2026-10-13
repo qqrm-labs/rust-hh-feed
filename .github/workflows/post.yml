@@ -12,14 +12,14 @@ on:
 
 concurrency:
   group: post-to-telegram-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   run-bot:
     if: ${{ vars.HH_PIPELINES_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       actions: read
     timeout-minutes: 20
     env:
@@ -27,9 +27,26 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Restore durable publication state
+        id: durable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DELIVERY_STATE_KEY: posted_jobs.json
+        run: |
+          status=0
+          python3 .github/scripts/delivery_state.py restore data/posted_jobs.json || status=$?
+          if [ "$status" = 3 ]; then
+            echo 'bootstrap=true' >> "$GITHUB_OUTPUT"
+          elif [ "$status" != 0 ]; then
+            exit "$status"
+          fi
 
       - name: Download posted jobs state
+        if: steps.durable.outputs.bootstrap == 'true'
         uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7 # v24
         with:
           workflow: post.yml
@@ -62,6 +79,9 @@ jobs:
       - name: Run bot
         shell: bash
         env:
+          DELIVERY_CHECKPOINT: .github/scripts/delivery_state.py
+          DELIVERY_STATE_KEY: posted_jobs.json
+          GH_TOKEN: ${{ github.token }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           BACKFILL_HOURS: ${{ inputs.backfill_hours }}
@@ -86,12 +106,14 @@ jobs:
         shell: bash
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           CHAT_ID: ${{ secrets.DEV_TELEGRAM_CHAT_ID }}
         run: |
           set -euo pipefail
           curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
             -d chat_id="${CHAT_ID}" \
-            -d text="❌ Workflow '${{ github.workflow }}' failed. See https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            -d text="❌ Workflow $WORKFLOW_NAME failed. See $RUN_URL"
 
   cleanup-old-runs:
     if: ${{ vars.HH_PIPELINES_ENABLED == 'true' }}

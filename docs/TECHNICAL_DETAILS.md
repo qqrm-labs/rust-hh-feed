@@ -1,6 +1,6 @@
 # Publication State Storage Architecture
 
-This document describes how the bot stores information about vacancies that have already been sent to the Telegram channel. The data is saved in the `posted_jobs.json` file, which is persisted between runs as a pipeline artifact rather than in the repository.
+This document describes how the bot stores information about vacancies that have already been sent to the Telegram channel. The data is saved in the `posted_jobs.json` file, whose confirmed entries are persisted after each message in a versioned envelope on the separate `delivery-state` branch.
 
 ## `posted_jobs.json` Format
 
@@ -19,17 +19,17 @@ The file is a JSON object with metadata about the last committed run and a dicti
 
 ## Typical Workflow
 
-1. The CI workflow downloads `posted_jobs.json` from the previous successful run and places it in the `data` directory.
+1. The posting workflow restores `posted_jobs.json` from the durable checkpoint (a successful-run artifact is used only for initial migration) and places it in the `data` directory.
 2. On startup the bot loads the file into memory, reads `last_successful_run_at`, and requests vacancies from the HeadHunter search RSS feed starting at that timestamp with a small overlap window.
 3. If the file is missing or does not contain a committed success timestamp yet, the bot falls back to a wider bootstrap window so that delayed or unstable workflow schedules do not cause immediate data loss.
 4. For each vacancy found:
    - if the ID already exists in the file, the vacancy is skipped;
-   - otherwise the bot publishes it and adds a record to the JSON.
+   - otherwise it persists a pending operation, publishes it, and atomically confirms the updated state.
 5. After posting, the bot removes entries older than `JOB_RETENTION_DAYS` (30 by default).
-6. Only after the full run succeeds does the bot update `last_successful_run_at` and write the new state file.
-7. The file is then uploaded as an artifact so that the next pipeline run can download it.
+6. Only after the full run succeeds does the bot advance `last_successful_run_at`; per-message confirmations are already durable.
+7. The file is also uploaded as an auxiliary artifact; future runs use the durable state branch.
 
-If a workflow run fails, its state file is not uploaded and its vacancies are not considered committed. The next successful run re-fetches vacancies since the previous successful run, which allows the bot to recover jobs discovered during failed runs.
+An interrupted send leaves a pending digest and blocks further sends until an operator reconciles its outcome. Confirmed vacancies remain committed; the fetch window does not advance on failure. See the README recovery procedure.
 
 ## Why JSON
 
@@ -38,4 +38,4 @@ If a workflow run fails, its state file is not uploaded and its vacancies are no
 - The file remains small even with many records.
 - The success timestamp allows the bot to recover after one or more failed workflow runs without trusting uncommitted state.
 
-This approach prevents duplicate postings while keeping a history of sent vacancies.
+Confirmed items are skipped. Ambiguous Telegram outcomes require reconciliation; this is not an exactly-once transport.

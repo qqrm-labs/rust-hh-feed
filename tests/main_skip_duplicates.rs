@@ -14,6 +14,7 @@ fn main_skips_already_posted() {
         .mock("GET", "/search/vacancy/rss")
         .match_query(mockito::Matcher::Any)
         .with_status(200)
+        .with_body(r#"{"ok":true}"#)
         .with_header("content-type", "application/xml")
         .with_body(common::rss_feed(&[(
             &pub_date,
@@ -26,6 +27,7 @@ fn main_skips_already_posted() {
         .mock("POST", "/bottoken/sendMessage")
         .expect(0)
         .with_status(200)
+        .with_body(r#"{"ok":true}"#)
         .create();
 
     let dir = tempdir().unwrap();

@@ -8,6 +8,9 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   run-bot:
     if: ${{ vars.HH_PIPELINES_ENABLED == 'true' }}
@@ -22,7 +25,9 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Rust
         uses: ./.github/actions/setup-rust

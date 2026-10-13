@@ -45,9 +45,18 @@ impl TelegramBot {
             ))
             .json(&msg)
             .send()
-            .await?;
+            .await
+            .map_err(|error| error.without_url())?;
         let status = resp.status();
-        resp.error_for_status()?;
+        let resp = resp
+            .error_for_status()
+            .map_err(|error| error.without_url())?;
+        let acknowledgement: serde_json::Value =
+            resp.json().await.map_err(|error| error.without_url())?;
+        anyhow::ensure!(
+            acknowledgement.get("ok").and_then(|value| value.as_bool()) == Some(true),
+            "Telegram did not confirm delivery"
+        );
         Ok(status)
     }
 }
