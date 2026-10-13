@@ -115,3 +115,5 @@ Existing release and delivery triggers are preserved. A merge performed using `G
 The release publishes `delivery-manifest.json` (protocol 1, source commit, SHA-256) alongside the binary. Posting verifies both protocol and hash before execution. Missing old manifests and asset-update races fail closed; wait for the normal release to finish before retrying.
 
 Manual production delivery uses the same reusable posting workflow, backfill input, journal and pending guard as scheduled delivery. It cannot bypass reconciliation.
+
+Migration note (2026-10-14): the retired `auto_merge.yml` trusted an author allowlist including `qqrm`, so its already-running workflow merged the initial migration PR #161 before rollout verification finished. That legacy controller is removed. The replacement enables native auto-merge only for verified Dependabot heads after both gates; ordinary author PRs are not eligible. Manual production delivery and release verification share the guarded path described above.
