@@ -12,6 +12,11 @@ on:
       - '.github/actions/setup-rust/action.yml'
       - '.github/scripts/release_manifest.py'
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Exact checked commit requested by the dependency merge controller
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -22,12 +27,23 @@ concurrency:
 
 jobs:
   build:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       CARGO_TERM_PROGRESS_WHEN: never
 
     steps:
+      - name: Verify publication commit
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          ACTUAL_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -n "$EXPECTED_SHA" ]; then
+            [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          fi
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
