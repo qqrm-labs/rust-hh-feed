@@ -28,6 +28,8 @@ updates:
 
   - package-ecosystem: "rust-toolchain"
     directory: "/"
+    cooldown:
+      default-days: 7
     schedule:
       interval: "weekly"
       day: "monday"
