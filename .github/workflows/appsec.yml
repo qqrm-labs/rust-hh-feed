@@ -8,6 +8,6 @@ permissions:
   contents: read
 jobs:
   security:
-    uses: qqrm-labs/.github/.github/workflows/security.yml@main
+    uses: qqrm-labs/.github/.github/workflows/security.yml@72d8931913a74c57b93a42b01b4849998660861b
     with:
       language: rust
