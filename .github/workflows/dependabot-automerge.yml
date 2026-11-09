@@ -5,7 +5,7 @@ name: Dependabot Automerge
 # then explicitly dispatch publication because GITHUB_TOKEN does not trigger push CI.
 on: # zizmor: ignore[dangerous-triggers]
   workflow_run:
-    workflows: [CI, Workflow Security, CodeQL, "Spell Check (typos)"]
+    workflows: [CI, Workflow Security, CodeQL, AppSec, "Spell Check (typos)"]
     types: [completed]
 
 # Metadata only: never check out PR code or consume its artifacts here.
